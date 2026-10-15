@@ -3,9 +3,9 @@
 	"id": "entity-area-logger",
 	"version": "${version}",
 	"name": "Entity Area Logger",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "Logs Mobs in Area by type each tick",
 	"authors": [
-		"Me!"
+		"DeimosTech"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
@@ -17,10 +17,17 @@
 	"entrypoints": {
 		"main": [
 			"com.entityarealogger.EntityAreaLogger"
+		],
+		"client": [
+			"com.entityarealogger.client.EntityAreaLoggerClient"
 		]
 	},
 	"mixins": [
-		"entity-area-logger.mixins.json"
+		"entity-area-logger.mixins.json",
+		{
+			"config": "entity-area-logger.client.mixins.json",
+			"environment": "client"
+		}
 	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
