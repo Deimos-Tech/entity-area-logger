@@ -50,19 +50,6 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 		// This entrypoint is suitable for setting up client-specific logic, such as rendering.
 
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
-			dispatcher.register(ClientCommands.literal("clienttater").executes(context -> {
-				context.getSource().sendFeedback(Component.literal("Called /clienttater with no arguments."));
-				return 1;
-			}));
-		});
-
-		ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
-			dispatcher.register(ClientCommands.literal("command_with_arg")
-			.then(ClientCommands.argument("value", IntegerArgumentType.integer())
-			.executes(EntityAreaLoggerClient::executeCommandWithArg)));
-			});
-
-		ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
 			dispatcher.register(ClientCommands.literal("logentities")
 				.then(
 					ClientCommands.literal("start")
@@ -111,13 +98,6 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 		
 
 	}
-
-	private static int executeCommandWithArg(CommandContext<FabricClientCommandSource> context) {
-		int value = IntegerArgumentType.getInteger(context, "value");
-		context.getSource().sendFeedback(Component.literal("Called /command_with_arg with value = %s".formatted(value)));
-		return 1;
-	}
-
 
 	private int startLogger(CommandContext<FabricClientCommandSource> context) {
 
