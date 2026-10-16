@@ -23,9 +23,12 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 
@@ -35,6 +38,12 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 	private AABB area = null;
 	private BufferedWriter writer = null;
 	private long tickCounter = 0;
+
+	private boolean triggering = false;
+	private boolean triggerIsActive = false;
+	private CommandContext<FabricClientCommandSource> triggerContext = null;
+	private BlockPos triggerBlock = null;
+	private BlockState lastBlockState = null;
 
 	@Override
 	public void onInitializeClient() {
@@ -71,11 +80,31 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 					ClientCommands.literal("stop")
 					.executes(this::stopLogger)
 				)
+				.then(
+					ClientCommands.literal("trigger")
+					.then(ClientCommands.argument("x1", DoubleArgumentType.doubleArg())
+					.then(ClientCommands.argument("y1", DoubleArgumentType.doubleArg())
+					.then(ClientCommands.argument("z1", DoubleArgumentType.doubleArg())
+					.then(ClientCommands.argument("x2", DoubleArgumentType.doubleArg())
+					.then(ClientCommands.argument("y2", DoubleArgumentType.doubleArg())
+					.then(ClientCommands.argument("z2", DoubleArgumentType.doubleArg())
+					.then(ClientCommands.literal("on")
+					.then(ClientCommands.argument("xt", IntegerArgumentType.integer())
+					.then(ClientCommands.argument("yt", IntegerArgumentType.integer())
+					.then(ClientCommands.argument("zt", IntegerArgumentType.integer())
+					.executes(this::setTrigger)
+				)))))))))))
+				.then(
+					ClientCommands.literal("trigger")
+					.then(ClientCommands.literal("clear")
+					.executes(this::clearTrigger)
+				))
 			);
 		});
 
 		//Log On Tick
 		ClientTickEvents.END_CLIENT_TICK.register(this::logOnTick);
+		ClientTickEvents.END_CLIENT_TICK.register(this::triggerOnTick);
 
 		//Close File on Disconnect
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> closeLogger());
@@ -138,6 +167,8 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 		writer = null;
 		area = null;
 
+		triggerIsActive = false;
+
 		context.getSource().sendFeedback(Component.literal("Logging Stopped"));
 		return 1;
 	}
@@ -150,6 +181,8 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 		}
 		writer = null;
 		area = null;
+		triggering = false;
+		triggerIsActive = false;
 	}
 
 	private void logOnTick(Minecraft client) {
@@ -185,4 +218,59 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 		}
 
 	}
+
+	private int setTrigger(CommandContext<FabricClientCommandSource> context) {
+
+		ClientLevel level = Minecraft.getInstance().level;
+		if (level == null) return 0;
+
+		triggering = true;
+		triggerContext = context;
+
+		double x = IntegerArgumentType.getInteger(context, "xt");
+		double y = IntegerArgumentType.getInteger(context, "yt");
+		double z = IntegerArgumentType.getInteger(context, "zt");
+		triggerBlock = new BlockPos((int) x, (int) y, (int) z);
+		lastBlockState = level.getBlockState(triggerBlock);
+
+		context.getSource().sendFeedback(Component.literal(String.format("Set logging trigger on Block %s %s %s.", x, y, z)));
+
+		return 1;
+	}
+
+	private int clearTrigger(CommandContext<FabricClientCommandSource> context) {
+
+		ClientLevel level = Minecraft.getInstance().level;
+		if (level == null) return 0;
+
+		triggering = false;
+		triggerContext = null;
+		triggerBlock = null;
+
+
+		context.getSource().sendFeedback(Component.literal("Cleaed logging triggers."));
+
+		return 1;
+	}
+
+	private void triggerOnTick(Minecraft client) {
+
+			if (!triggering || triggerBlock == null) return;
+
+			ClientLevel level = Minecraft.getInstance().level;
+			if (level == null) return;
+
+			BlockState currenBlockState = level.getBlockState(triggerBlock);
+			if (currenBlockState != lastBlockState) {
+				lastBlockState = currenBlockState;
+
+				if (!triggerIsActive) {
+					triggerIsActive = true;
+					startLogger(triggerContext);
+				} else {
+					stopLogger(triggerContext);
+				}
+			}
+	}
+
 }
