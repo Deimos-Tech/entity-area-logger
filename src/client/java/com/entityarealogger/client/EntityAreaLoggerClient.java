@@ -20,7 +20,12 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 
 
@@ -35,21 +40,21 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		// This entrypoint is suitable for setting up client-specific logic, such as rendering.
 
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
-	        dispatcher.register(ClientCommands.literal("clienttater").executes(context -> {
-		        context.getSource().sendFeedback(Component.literal("Called /clienttater with no arguments."));
-		        return 1;
-	        }));
-        });
-
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
-	        dispatcher.register(ClientCommands.literal("command_with_arg")
-			.then(ClientCommands.argument("value", IntegerArgumentType.integer())
-			.executes(EntityAreaLoggerClient::executeCommandWithArg)));
-            });
+		ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
+			dispatcher.register(ClientCommands.literal("clienttater").executes(context -> {
+				context.getSource().sendFeedback(Component.literal("Called /clienttater with no arguments."));
+				return 1;
+			}));
+		});
 
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
-	        dispatcher.register(ClientCommands.literal("logentities")
+			dispatcher.register(ClientCommands.literal("command_with_arg")
+			.then(ClientCommands.argument("value", IntegerArgumentType.integer())
+			.executes(EntityAreaLoggerClient::executeCommandWithArg)));
+			});
+
+		ClientCommandRegistrationCallback.EVENT.register((dispatcher, commandBuildContext) -> {
+			dispatcher.register(ClientCommands.literal("logentities")
 				.then(
 					ClientCommands.literal("start")
 					.then(ClientCommands.argument("x1", DoubleArgumentType.doubleArg())
@@ -67,52 +72,58 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 					.executes(this::stopLogger)
 				)
 			);
-        });
+		});
 
+		//Log On Tick
+		ClientTickEvents.END_CLIENT_TICK.register(this::logOnTick);
+
+		//Close File on Disconnect
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> closeLogger());
 		
 
 	}
 
-    private static int executeCommandWithArg(CommandContext<FabricClientCommandSource> context) {
-	    int value = IntegerArgumentType.getInteger(context, "value");
-	    context.getSource().sendFeedback(Component.literal("Called /command_with_arg with value = %s".formatted(value)));
-	    return 1;
-    }
+	private static int executeCommandWithArg(CommandContext<FabricClientCommandSource> context) {
+		int value = IntegerArgumentType.getInteger(context, "value");
+		context.getSource().sendFeedback(Component.literal("Called /command_with_arg with value = %s".formatted(value)));
+		return 1;
+	}
 
 
-    private int startLogger(CommandContext<FabricClientCommandSource> context) {
+	private int startLogger(CommandContext<FabricClientCommandSource> context) {
 
 		if (writer != null) stopLogger(context);
+		tickCounter = 0;
 		
 		double x1 = DoubleArgumentType.getDouble(context, "x1");
-        double y1 = DoubleArgumentType.getDouble(context, "y1");
-        double z1 = DoubleArgumentType.getDouble(context, "z1");
-        double x2 = DoubleArgumentType.getDouble(context, "x2");
-        double y2 = DoubleArgumentType.getDouble(context, "y2");
-        double z2 = DoubleArgumentType.getDouble(context, "z2");
+		double y1 = DoubleArgumentType.getDouble(context, "y1");
+		double z1 = DoubleArgumentType.getDouble(context, "z1");
+		double x2 = DoubleArgumentType.getDouble(context, "x2");
+		double y2 = DoubleArgumentType.getDouble(context, "y2");
+		double z2 = DoubleArgumentType.getDouble(context, "z2");
 
 		area = new AABB(x1, y1, z1, x2, y2, z2);
 
-	    context.getSource().sendFeedback(Component.literal("Started Logger within = %s %s %s / %s %s %s".formatted(x1, y1, z1, x2, y2, z2)));
+		context.getSource().sendFeedback(Component.literal("Started Logger within = %s %s %s / %s %s %s".formatted(x1, y1, z1, x2, y2, z2)));
 
-        try {
-            Path dir = FabricLoader.getInstance().getGameDir().resolve("entity_logs");
-            Files.createDirectories(dir);
-            String name = "entities_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")) + ".csv";
-            Path file = dir.resolve(name);
-            writer = Files.newBufferedWriter(file);
-            writer.write("tick,world_time,entity_type,count\n");
-            context.getSource().sendFeedback(Component.literal("Started logging entities to " + file));
-        } catch (IOException e) {
-            writer = null;
-            area = null;
-            context.getSource().sendFeedback(Component.literal("Failed to open log file: " + e.getMessage()));
-        }
+		try {
+			Path dir = FabricLoader.getInstance().getGameDir().resolve("entity_logs");
+			Files.createDirectories(dir);
+			String name = "entities_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")) + ".csv";
+			Path file = dir.resolve(name);
+			writer = Files.newBufferedWriter(file);
+			writer.write("tick,world_time,entity_type,count\n");
+			context.getSource().sendFeedback(Component.literal("Started logging entities to " + file));
+		} catch (IOException e) {
+			writer = null;
+			area = null;
+			context.getSource().sendFeedback(Component.literal("Failed to open log file: " + e.getMessage()));
+		}
 
-	    return 1;
-    }
+		return 1;
+	}
 
-    private int stopLogger(CommandContext<FabricClientCommandSource> context) {
+	private int stopLogger(CommandContext<FabricClientCommandSource> context) {
 
 		if (writer == null) {
 			context.getSource().sendFeedback(Component.literal("Could not stop logger: Logger not running."));
@@ -122,12 +133,56 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 		try {
 			writer.close();
 		} catch (IOException ignored) {
-        }
+		}
 
 		writer = null;
 		area = null;
 
-	    context.getSource().sendFeedback(Component.literal("Logging Stopped"));
-	    return 1;
-    }
+		context.getSource().sendFeedback(Component.literal("Logging Stopped"));
+		return 1;
+	}
+
+	private void closeLogger() {
+		if (writer == null) return;
+		try {
+			writer.close();
+		} catch (IOException ignored) {
+		}
+		writer = null;
+		area = null;
+	}
+
+	private void logOnTick(Minecraft client) {
+		if (writer == null || area == null || client.level == null) return;
+
+		tickCounter++;
+
+		//Only write 2 times per second
+		if (tickCounter%10 != 0) return;
+
+		List<Entity> entities = client.level.getEntities((Entity) null, area);
+ 
+		Map<String, Integer> counts = new TreeMap<>();
+		for (Entity e : entities) {
+			String type = BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString();
+			counts.merge(type, 1, Integer::sum);
+		}
+	
+		long worldTime = client.level.getGameTime();
+		try {
+			if (counts.isEmpty()) {
+				// keep every tick represented in the file
+				writer.write(tickCounter + "," + worldTime + ",none,0\n");
+			} else {
+				for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+					writer.write(tickCounter + "," + worldTime + "," + entry.getKey() + "," + entry.getValue() + "\n");
+				}
+			}
+			writer.flush();
+		} catch (IOException e) {
+			//context.getSource().sendFeedback("Write error, stopping: " + e.getMessage());
+			closeLogger();
+		}
+
+	}
 }
