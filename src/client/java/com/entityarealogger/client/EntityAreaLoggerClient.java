@@ -243,10 +243,9 @@ public class EntityAreaLoggerClient implements ClientModInitializer {
 		ClientLevel level = Minecraft.getInstance().level;
 		if (level == null) return 0;
 
-		triggering = false;
+		stopLogger(context);
 		triggerContext = null;
 		triggerBlock = null;
-
 
 		context.getSource().sendFeedback(Component.literal("Cleaed logging triggers."));
 
